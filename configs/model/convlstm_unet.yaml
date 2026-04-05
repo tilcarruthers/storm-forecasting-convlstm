@@ -1,0 +1,5 @@
+model:
+  name: convlstm_unet
+  base: 16
+  bottleneck_ch: 128
+  dropout_p: 0.0

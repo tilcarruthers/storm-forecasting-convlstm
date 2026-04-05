@@ -1,0 +1,18 @@
+_base_:
+  - ../base.yaml
+  - ../model/convlstm_unet.yaml
+  - ../data/vil_12in_12out.yaml
+
+outputs:
+  run_name: uncertainty_mc_dropout
+
+model:
+  dropout_p: 0.1
+
+evaluation:
+  compute_ssim: true
+  compute_weighted_mae: true
+
+uncertainty:
+  enabled: true
+  n_samples: 10

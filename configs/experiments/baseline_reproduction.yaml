@@ -1,0 +1,17 @@
+_base_:
+  - ../base.yaml
+  - ../model/convlstm_unet.yaml
+  - ../data/vil_12in_12out.yaml
+
+outputs:
+  run_name: baseline_reproduction
+
+training:
+  loss:
+    name: mae
+    kwargs: {}
+  use_all_data: false
+
+evaluation:
+  compute_ssim: false
+  compute_weighted_mae: false

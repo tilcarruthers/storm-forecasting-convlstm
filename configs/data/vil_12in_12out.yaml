@@ -1,0 +1,10 @@
+data:
+  dataset_key: vil
+  tin: 12
+  tout: 12
+  stride: 1
+  use_sliding_windows: true
+  normalize_divisor: 255.0
+  use_crops: false
+  crop_size: 384
+  expected_hw: [384, 384]

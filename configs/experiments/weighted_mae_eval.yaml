@@ -1,0 +1,19 @@
+_base_:
+  - ../base.yaml
+  - ../model/convlstm_unet.yaml
+  - ../data/vil_12in_12out.yaml
+
+outputs:
+  run_name: weighted_mae_eval
+
+training:
+  loss:
+    name: mae
+    kwargs: {}
+
+evaluation:
+  compute_ssim: true
+  compute_weighted_mae: true
+  weighted_mae:
+    thresholds: [0.25, 0.5, 0.75]
+    weights: [1.0, 2.0, 3.0, 4.0]
