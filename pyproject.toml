@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "storm-forecasting-convlstm"
+version = "0.1.0"
+description = "Clean PyTorch refactor of a ConvLSTM seq2seq storm forecasting project on VIL imagery."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Thomas Carruthers"}
+]
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.2",
+  "matplotlib>=3.8",
+  "h5py>=3.10",
+  "PyYAML>=6.0",
+  "huggingface_hub>=0.23",
+  "imageio>=2.34",
+  "scikit-image>=0.23",
+  "torch>=2.2",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pre-commit>=3.7",
+  "ruff>=0.5",
+  "ipykernel>=6.29",
+  "jupyter>=1.0",
+]
+
+[project.scripts]
+sf-train = "storm_forecasting.cli.train:main"
+sf-evaluate = "storm_forecasting.cli.evaluate:main"
+sf-predict = "storm_forecasting.cli.predict:main"
+sf-make-index = "storm_forecasting.cli.make_dataset_index:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
