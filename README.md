@@ -1,48 +1,172 @@
 # Storm Forecasting with ConvLSTM Seq2Seq
 
-A clean, reproducible PyTorch refactor of an Imperial College MSc storm forecasting coursework project. The task is to use 12 past VIL (Vertically Integrated Liquid) radar frames to predict the next 12 frames at a 5-minute cadence.
+A clean, reproducible PyTorch refactor of an Imperial College MSc storm forecasting project for **direct multi-step storm nowcasting** on **VIL (Vertically Integrated Liquid)** imagery.
 
-The original coursework objective was to optimise **MAE / L1 loss** because that was the competition metric. This refactor keeps that baseline intact, then creates a modular codebase that makes it straightforward to add more careful evaluation later, including weighted MAE, SSIM, and a simple Monte Carlo dropout uncertainty analysis.
+The task is to use **12 past VIL frames** to predict the **next 12 frames** at a **5-minute cadence**. The original coursework objective was to optimise **MAE / L1 loss** because that was the competition metric. This repository preserves that baseline, then restructures the project into a modular research codebase that is easier to inspect, reproduce, extend, and evaluate.
 
-## Why this repository exists
+---
 
-The notebook version worked for the coursework and competition, but it mixed together:
+## Overview
 
-- EDA
-- data indexing
-- HDF5 I/O
-- dataset construction
-- model definition
-- training loops
-- evaluation and plotting
+This project began as a notebook-based coursework and competition entry and is now being refactored into a cleaner ML research repository with:
 
-This repository extracts those concerns into a proper Python package so the project can be used as a portfolio piece for ML research and ML engineering roles.
+- modular PyTorch code under `src/`
+- reproducible data bootstrap and indexing
+- config-driven train / eval / predict workflows
+- storm-wise dataset splitting
+- saved config and metrics artifacts
+- utilities for more careful post-hoc analysis
 
-## Problem setup
+The immediate goal is to preserve the original competition-aligned baseline honestly, then add better evaluation and analysis around it, including:
+
+- **weighted MAE**
+- **SSIM**
+- **MC-dropout-based uncertainty proxy**
+
+These are treated as **supplementary evaluation extensions**, not as retroactive rewrites of the original benchmark.
+
+---
+
+## Problem formulation
+
+This is a **direct multi-step spatiotemporal forecasting** problem.
 
 - **Input:** 12 historical VIL frames
 - **Output:** 12 future VIL frames
 - **Cadence:** 5 minutes per frame
-- **Task type:** direct multi-step spatiotemporal forecasting
-- **Model family:** ConvLSTM bottleneck U-Net seq2seq model in PyTorch
+- **Spatial resolution:** 384 × 384
+- **Task:** predict all 12 future frames in one forward pass
 
-## Modelling decisions
+The original dataset contains multiple modalities, but this project filters to **VIL only** for the Task 1 forecasting setup.
 
-### Direct multi-step forecasting instead of autoregressive rollout
+---
 
-This project predicts the next 12 frames in one forward pass rather than feeding predictions back into the model autoregressively. That design choice was deliberate:
+## Why this repository exists
 
-- storm evolution changes materially across the forecast horizon
-- repeated autoregressive rollout can compound error
-- a direct objective better matches the downstream evaluation setting for the coursework
+The original notebook implementation was enough to complete the coursework and competition, but it mixed together:
 
-### MAE / L1 as the original optimisation target
+- exploratory data analysis
+- metadata filtering
+- HDF5 I/O
+- sliding-window construction
+- model definition
+- training loops
+- evaluation
+- plotting and GIF generation
 
-The original competition was scored with MAE, so the baseline model is trained with L1 loss. That is preserved here to keep the benchmark honest.
+This repository separates those concerns into a proper Python package so the project is easier to:
 
-### Future evaluation extensions
+- review
+- rerun
+- test
+- extend
+- present as a portfolio piece for ML research and ML engineering roles
 
-Weighted MAE, SSIM, and Monte Carlo dropout are included as modular evaluation utilities so they can be investigated without rewriting the whole repo. They should be interpreted as **supplementary analysis**, not as retroactive changes to the original benchmark.
+---
+
+## Dataset structure and modelling implications
+
+The dataset structure is important for understanding the design choices.
+
+The final Task 1 setup uses:
+
+- **800 unique storms**
+- **36 frames per storm**
+- **12 input frames + 12 target frames**
+- **stride = 1**
+- **13 overlapping windows per storm**
+- **10,400 total windows**
+
+However, those 10,400 windows are **not independent samples**. They are heavily overlapping within each storm, so the effective training diversity is much closer to **hundreds of storms** than to a large-scale video forecasting dataset.
+
+That matters for model selection.
+
+This project deliberately does **not** default to a transformer or diffusion-style architecture. Given:
+
+- only **800 unique storms**
+- strong overlap between windows
+- full-resolution **384 × 384** sequences
+- the need for a competitive and stable baseline under coursework constraints
+
+a **ConvLSTM-U-Net** was a more appropriate first model than substantially larger, more data-hungry alternatives trained from scratch.
+
+In other words, the project prioritises **inductive bias and data efficiency** over architectural novelty.
+
+---
+
+## Why direct forecasting instead of autoregressive rollout
+
+Two broad forecasting strategies were considered:
+
+1. **autoregressive rollout**
+2. **direct multi-output prediction**
+
+This project uses **direct multi-output forecasting**, predicting all 12 future frames in one forward pass.
+
+That choice was deliberate:
+
+- storm dynamics can change materially across the forecast horizon
+- autoregressive rollout compounds error as predictions are fed back into the model
+- evaluation is performed over the full multi-step horizon, so direct supervision is a more natural fit
+- direct prediction keeps the training target aligned with the actual downstream task
+
+For long-horizon storm evolution, avoiding cumulative rollout drift was an important consideration.
+
+---
+
+## Why MAE / L1 was used originally
+
+The original coursework and competition were scored with **MAE**, so the baseline model was trained with **L1 loss**.
+
+That decision is preserved here for a simple reason: it keeps the benchmark honest.
+
+Rather than retroactively replacing the objective with a more complex perceptual or weighted loss, this repository first reproduces the original setup faithfully. Only after that does it add more nuanced evaluation and analysis.
+
+---
+
+## Planned evaluation extensions
+
+The next stage of the project is not to replace the baseline, but to **interrogate it more carefully**.
+
+### Weighted MAE
+
+Weighted MAE will be used to test whether plain MAE under-emphasises **rare high-intensity storm regions**.
+
+### SSIM
+
+SSIM will be used as a **structural fidelity metric** to detect whether forecasts become overly smooth or lose storm morphology even when pixelwise error remains acceptable.
+
+### MC dropout
+
+A lightweight **MC-dropout uncertainty proxy** is planned as a simple way to inspect where uncertainty appears to grow across space and forecast horizon.
+
+These are intended as:
+
+- **evaluation and analysis tools first**
+- **controlled extensions second**
+
+not as post-hoc attempts to rewrite the original competition objective.
+
+---
+
+## Model architecture
+
+The final model is a **sequence-to-sequence ConvLSTM U-Net**:
+
+- encoder: spatial downsampling via convolutional blocks
+- bottleneck: ConvLSTM encoder-decoder for temporal state transfer
+- decoder: upsampling path with skip connections
+- output: direct prediction of the full future sequence
+
+![Sequence-to-sequence ConvLSTM U-Net architecture](reports/figures/seq2seq_convlstm_unet_architecture.png)
+
+This architecture was chosen because it combines:
+
+- **temporal memory** from ConvLSTM
+- **multi-scale spatial reconstruction** from U-Net
+- a better compute/performance trade-off than larger sequence models for this dataset regime
+
+---
 
 ## Repository layout
 
@@ -59,7 +183,43 @@ storm-forecasting-convlstm/
 └─ tests/
 ```
 
+### Main package structure
+
+```text
+src/storm_forecasting/
+├─ cli/            # train / evaluate / predict / dataset index commands
+├─ data/           # HDF5 I/O, indexing, splits, datasets, windowing
+├─ evaluation/     # metrics, horizon analysis, qualitative tools, uncertainty
+├─ models/         # ConvLSTM, U-Net blocks, seq2seq architecture
+├─ training/       # losses, optimisation, engine, checkpoints
+├─ utils/          # device and logging helpers
+├─ config.py       # hierarchical config loading
+├─ paths.py
+└─ seed.py
+```
+
+---
+
+## What is implemented
+
+- HDF5 loading for per-storm VIL arrays
+- sliding-window sequence generation
+- storm-wise train/val/test split
+- lazy PyTorch dataset
+- ConvLSTM bottleneck U-Net seq2seq model
+- MAE baseline training
+- overall MAE / MSE / RMSE evaluation
+- per-horizon error curves
+- qualitative panels and GIF generation
+- optional weighted MAE / SSIM / MC dropout utilities
+- reproducible data bootstrap from Hugging Face
+- resolved config export to YAML / CSV for train and eval runs
+
+---
+
 ## Installation
+
+Create and activate a virtual environment:
 
 ```bash
 python -m venv .venv
@@ -67,6 +227,18 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 pre-commit install
 ```
+
+This installs both runtime and development dependencies, including:
+
+- PyTorch
+- pandas / NumPy / matplotlib
+- h5py
+- scikit-learn
+- pytest
+- ruff
+- pre-commit
+
+---
 
 ## Data bootstrap
 
@@ -84,7 +256,7 @@ export HF_TOKEN="your_token_here"
 huggingface-cli login
 ```
 
-Then bootstrap the data and build the VIL-only index:
+Then bootstrap the raw data and build the VIL-only index:
 
 ```bash
 make download-data
@@ -107,7 +279,17 @@ and builds:
 
 No raw data or secrets are committed to the repository.
 
+---
+
 ## Core commands
+
+### Build the VIL-only index
+
+```bash
+python -m storm_forecasting.cli.make_dataset_index \
+  --config configs/experiments/baseline_reproduction.yaml \
+  --download
+```
 
 ### Train baseline
 
@@ -135,40 +317,51 @@ python -m storm_forecasting.cli.predict \
   --index 0
 ```
 
+---
+
 ## Useful CLI arguments
 
 ### `storm_forecasting.cli.make_dataset_index`
 
-- `--config`: load paths and dataset metadata from an experiment config
-- `--download`: download raw files before building the index
-- `--repo-id`: override the Hugging Face dataset repo
-- `--local-dir`: override the download location
-- `--events-csv`: explicit path to raw metadata CSV
-- `--output-csv`: explicit path to the generated VIL-only index
-- `--img-type-col`: override the modality column used for filtering
-- `--vil-value`: override the value treated as VIL
+- `--config` — load paths and dataset metadata from a config
+- `--download` — download raw files before building the index
+- `--repo-id` — override the Hugging Face dataset repo
+- `--local-dir` — override the download location
+- `--events-csv` — explicit path to raw metadata CSV
+- `--output-csv` — explicit path to the generated VIL-only index
+- `--img-type-col` — override the modality column used for filtering
+- `--vil-value` — override the value treated as VIL
 
 ### `storm_forecasting.cli.train`
 
-- `--config`: experiment config
-- `--device`: override device selection, e.g. `cpu` or `cuda`
-- `--num-workers`: dataloader worker override
-- `--batch-size`: dataloader batch-size override
-- `--save-config-artifacts`: save the fully resolved config as YAML and a flattened CSV table
+- `--config` — experiment config
+- `--device` — override device selection, e.g. `cpu` or `cuda`
+- `--num-workers` — dataloader worker override
+- `--batch-size` — dataloader batch-size override
+- `--save-config-artifacts` — save the fully resolved config as YAML and a flattened CSV table
 
 ### `storm_forecasting.cli.evaluate`
 
-- `--config`: experiment config
-- `--checkpoint`: checkpoint to evaluate
-- `--device`: override device selection
-- `--num-workers`: dataloader worker override
-- `--batch-size`: dataloader batch-size override
-- `--max-batches`: smoke-test the evaluation loop on a small subset
-- `--save-config-artifacts`: save the fully resolved config as YAML and a flattened CSV table
+- `--config` — experiment config
+- `--checkpoint` — checkpoint to evaluate
+- `--device` — override device selection
+- `--num-workers` — dataloader worker override
+- `--batch-size` — dataloader batch-size override
+- `--max-batches` — smoke-test the evaluation loop on a small subset
+- `--save-config-artifacts` — save the fully resolved config as YAML and a flattened CSV table
+
+### `storm_forecasting.cli.predict`
+
+- `--config` — experiment config
+- `--checkpoint` — checkpoint to load
+- `--index` — dataset sample index to visualise
+- `--device` — override device selection
+
+---
 
 ## Outputs and reproducibility
 
-Training and evaluation can now save:
+Training and evaluation can save:
 
 - resolved config YAML files
 - flattened config CSV tables
@@ -176,23 +369,42 @@ Training and evaluation can now save:
 - CSV metric summaries
 - per-horizon MAE CSV files
 - qualitative figures under `outputs/figures/`
+- prediction artifacts under `outputs/predictions/`
 
-This makes runs easier to inspect and compare without going back to notebook state.
+This makes experiments easier to inspect and compare without depending on notebook state.
 
-## What is implemented now
+---
 
-- HDF5 loading for per-storm VIL arrays
-- sliding-window sequence generation
-- storm-wise train/val/test split
-- lazy PyTorch dataset
-- ConvLSTM bottleneck U-Net seq2seq model
-- MAE baseline training
-- overall MAE / MSE / RMSE evaluation
-- per-horizon error curves
-- qualitative panels and GIF generation
-- optional weighted MAE / SSIM / MC dropout utilities
-- reproducible data bootstrap from Hugging Face
-- config export to YAML / CSV for train and eval runs
+## Results
+
+Baseline evaluation artifacts will be added after running the refactored pipeline on desktop / GPU hardware.
+
+Planned README results include:
+
+- overall test MAE / RMSE
+- per-horizon MAE curve
+- representative qualitative forecast panel
+- supplementary weighted MAE and SSIM analysis
+
+The original competition result was:
+
+- **2nd place out of 25 teams** across Imperial ACSE and EDSML
+
+That ranking reflects the original coursework setup. This repository aims to make the implementation more reproducible and easier to analyse, rather than to rewrite that outcome after the fact.
+
+---
+
+## Notebooks
+
+The notebooks now play a narrower role than in the original coursework.
+
+- `01_eda.ipynb` — metadata inspection and task framing
+- `02_error_analysis.ipynb` — saved-metric analysis and horizon-wise evaluation
+- `03_qualitative_results.ipynb` — panels, GIFs, and interpretation
+
+Core training and evaluation logic lives in `src/`, not in notebook cells.
+
+---
 
 ## What this project does **not** claim
 
@@ -203,17 +415,21 @@ This repository should not be framed as:
 - a calibrated probabilistic weather service
 - a full remote sensing stack
 
-It is a clean research-engineering refactor of a spatiotemporal forecasting project using VIL imagery in PyTorch.
+It is a clean **research-engineering refactor** of a spatiotemporal forecasting project using VIL imagery in PyTorch.
+
+---
 
 ## Immediate next steps
 
 - run full baseline evaluation on desktop / GPU hardware
 - add baseline result figures and tables to this README
 - evaluate weighted MAE and SSIM on the saved competition checkpoint
-- then run controlled retraining experiments if those metrics prove informative
+- run controlled retraining experiments only if those metrics prove informative
 - add GitHub Actions CI alongside the existing tests and pre-commit hooks
 
-## Suggested first workflow on a fresh clone
+---
+
+## Quickstart
 
 ```bash
 python -m venv .venv
@@ -227,3 +443,9 @@ python -m storm_forecasting.cli.evaluate \
   --checkpoint outputs/checkpoints/best_competition_model.pt \
   --save-config-artifacts
 ```
+
+---
+
+## Acknowledgements
+
+This repository is based on an Imperial College MSc storm forecasting coursework project and competition entry, then refactored into a cleaner and more reproducible research codebase.
