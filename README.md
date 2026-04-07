@@ -130,22 +130,15 @@ The next stage of the project is not to replace the baseline, but to **interroga
 
 ### Weighted MAE
 
-Weighted MAE will be used to test whether plain MAE under-emphasises **rare high-intensity storm regions**.
+Weighted MAE is used as a supplementary metric to test whether plain MAE under-emphasises **rare high-intensity storm regions**. In the current setup, this is implemented as an intensity-aware error reweighting rather than a replacement training objective.
 
 ### SSIM
 
-SSIM will be used as a **structural fidelity metric** to detect whether forecasts become overly smooth or lose storm morphology even when pixelwise error remains acceptable.
+SSIM is used as a **structural fidelity metric** to detect whether forecasts become overly smooth or lose storm morphology even when pixelwise error remains acceptable.
 
 ### MC dropout
 
-A lightweight **MC-dropout uncertainty proxy** is planned as a simple way to inspect where uncertainty appears to grow across space and forecast horizon.
-
-These are intended as:
-
-- **evaluation and analysis tools first**
-- **controlled extensions second**
-
-not as post-hoc attempts to rewrite the original competition objective.
+A lightweight **MC-dropout uncertainty proxy** remains a planned extension for future work. It is intended as an exploratory uncertainty signal, not as a calibrated probabilistic forecast.
 
 ---
 
@@ -291,20 +284,38 @@ python -m storm_forecasting.cli.make_dataset_index \
   --download
 ```
 
-### Train baseline
+### Train the main desktop baseline
 
 ```bash
 python -m storm_forecasting.cli.train \
-  --config configs/experiments/baseline_reproduction.yaml \
+  --config configs/experiments/baseline_desktop.yaml \
+  --device cuda \
+  --num-workers 2 \
+  --batch-size 1 \
   --save-config-artifacts
 ```
 
-### Evaluate baseline
+### Evaluate the main desktop baseline
 
 ```bash
 python -m storm_forecasting.cli.evaluate \
-  --config configs/experiments/baseline_reproduction.yaml \
-  --checkpoint outputs/checkpoints/best_competition_model.pt \
+  --config configs/experiments/baseline_desktop.yaml \
+  --checkpoint outputs/checkpoints/baseline_desktop/best.pt \
+  --device cuda \
+  --num-workers 2 \
+  --batch-size 1 \
+  --save-config-artifacts
+```
+
+### Evaluate supplementary metrics on the same checkpoint
+
+```bash
+python -m storm_forecasting.cli.evaluate \
+  --config configs/experiments/weighted_mae_eval.yaml \
+  --checkpoint outputs/checkpoints/baseline_desktop/best.pt \
+  --device cuda \
+  --num-workers 2 \
+  --batch-size 1 \
   --save-config-artifacts
 ```
 
@@ -312,8 +323,9 @@ python -m storm_forecasting.cli.evaluate \
 
 ```bash
 python -m storm_forecasting.cli.predict \
-  --config configs/experiments/baseline_reproduction.yaml \
-  --checkpoint outputs/checkpoints/baseline_reproduction/best.pt \
+  --config configs/experiments/baseline_desktop.yaml \
+  --checkpoint outputs/checkpoints/baseline_desktop/best.pt \
+  --split test \
   --index 0
 ```
 
@@ -354,6 +366,7 @@ python -m storm_forecasting.cli.predict \
 
 - `--config` — experiment config
 - `--checkpoint` — checkpoint to load
+- `--split` — dataset split to sample from
 - `--index` — dataset sample index to visualise
 - `--device` — override device selection
 
@@ -377,20 +390,38 @@ This makes experiments easier to inspect and compare without depending on notebo
 
 ## Results
 
-Baseline evaluation artifacts will be added after running the refactored pipeline on desktop / GPU hardware.
+The main baseline in this repository is the **storm-wise train/validation/test split** run produced by the refactored codebase.
 
-Planned README results include:
+Training summary:
+- best validation checkpoint at **epoch 8**
+- **best validation MAE:** 0.0379
+- learning rate reduced from `1e-4` to `5e-5`
+- early stopping triggered after the validation metric plateaued
 
-- overall test MAE / RMSE
-- per-horizon MAE curve
-- representative qualitative forecast panel
-- supplementary weighted MAE and SSIM analysis
+Held-out test performance of the selected checkpoint:
+- **MAE:** 0.0357
+- **MSE:** 0.00694
+- **RMSE:** 0.0789
+
+Supplementary evaluation on the same checkpoint:
+- **weighted MAE:** 0.0507
+- **SSIM:** 0.7344
+
+These results establish a clean, reproducible baseline before any loss-function changes or uncertainty extensions.
+
+![Storm forecast qualitative compact panel](reports/figures/baseline_compact_panel.png)
+
+![Storm forecast MAE per horizon step](reports/figures/baseline_mae_per_horizon.png)
+
+### Interpretation
+
+The baseline generalises reasonably well on held-out storms, but the qualitative examples show a consistent failure mode: predictions become progressively **smoother and less spatially sharp** as lead time increases. This matches the gap between standard MAE and intensity-weighted MAE, and it is exactly why structural and intensity-aware evaluation were added. SSIM provides a complementary view of morphological fidelity, while weighted MAE makes errors on stronger storm regions count more heavily.
 
 The original competition result was:
 
 - **2nd place out of 25 teams** across Imperial ACSE and EDSML
 
-That ranking reflects the original coursework setup. This repository aims to make the implementation more reproducible and easier to analyse, rather than to rewrite that outcome after the fact.
+That ranking reflects the original coursework setup. This repository reframes the project as a reproducible research-engineering baseline rather than trying to rewrite the competition outcome after the fact.
 
 ---
 
@@ -419,13 +450,13 @@ It is a clean **research-engineering refactor** of a spatiotemporal forecasting 
 
 ---
 
-## Immediate next steps
+## Future work
 
-- run full baseline evaluation on desktop / GPU hardware
-- add baseline result figures and tables to this README
-- evaluate weighted MAE and SSIM on the saved competition checkpoint
-- run controlled retraining experiments only if those metrics prove informative
-- add GitHub Actions CI alongside the existing tests and pre-commit hooks
+- compare the desktop baseline against the strict coursework-style reproduction run
+- investigate weighted-MAE training only after the current baseline is fixed as the reference point
+- test SSIM-informed objectives carefully rather than treating SSIM as a replacement benchmark
+- add a lightweight MC-dropout uncertainty notebook for qualitative uncertainty maps
+- keep the repo focused on reproducible forecasting experiments rather than turning it into a generic MLOps showcase
 
 ---
 
@@ -438,9 +469,18 @@ pip install -e ".[dev]"
 export HF_TOKEN="your_token_here"
 make download-data
 pytest
+python -m storm_forecasting.cli.train \
+  --config configs/experiments/baseline_desktop.yaml \
+  --device cuda \
+  --num-workers 2 \
+  --batch-size 1 \
+  --save-config-artifacts
 python -m storm_forecasting.cli.evaluate \
-  --config configs/experiments/baseline_reproduction.yaml \
-  --checkpoint outputs/checkpoints/best_competition_model.pt \
+  --config configs/experiments/weighted_mae_eval.yaml \
+  --checkpoint outputs/checkpoints/baseline_desktop/best.pt \
+  --device cuda \
+  --num-workers 2 \
+  --batch-size 1 \
   --save-config-artifacts
 ```
 
