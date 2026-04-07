@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 import torch
+from tqdm.auto import tqdm
+
 from storm_forecasting.config import load_config, save_flat_config_csv, save_resolved_config
 from storm_forecasting.data.dataset import VILSeq2SeqDataset, build_dataloader
 from storm_forecasting.data.io import load_index_csv
@@ -17,7 +19,6 @@ from storm_forecasting.paths import ensure_dir
 from storm_forecasting.training.checkpoints import load_checkpoint, load_model_state
 from storm_forecasting.utils.device import get_device
 from storm_forecasting.utils.logging import setup_logging
-from tqdm.auto import tqdm
 
 
 def parse_args() -> argparse.Namespace:
