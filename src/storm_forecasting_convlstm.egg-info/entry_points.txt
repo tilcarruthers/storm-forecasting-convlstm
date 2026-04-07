@@ -1,0 +1,5 @@
+[console_scripts]
+sf-evaluate = storm_forecasting.cli.evaluate:main
+sf-make-index = storm_forecasting.cli.make_dataset_index:main
+sf-predict = storm_forecasting.cli.predict:main
+sf-train = storm_forecasting.cli.train:main

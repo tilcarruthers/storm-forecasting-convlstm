@@ -1,0 +1,161 @@
+Metadata-Version: 2.4
+Name: storm-forecasting-convlstm
+Version: 0.1.0
+Summary: Clean PyTorch refactor of a ConvLSTM seq2seq storm forecasting project on VIL imagery.
+Author: Thomas Carruthers
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=1.26
+Requires-Dist: pandas>=2.2
+Requires-Dist: matplotlib>=3.8
+Requires-Dist: h5py>=3.10
+Requires-Dist: PyYAML>=6.0
+Requires-Dist: huggingface_hub>=0.23
+Requires-Dist: imageio>=2.34
+Requires-Dist: scikit-image>=0.23
+Requires-Dist: torch>=2.2
+Requires-Dist: tqdm>=4.66
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pre-commit>=3.7; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"
+Requires-Dist: ipykernel>=6.29; extra == "dev"
+Requires-Dist: jupyter>=1.0; extra == "dev"
+Dynamic: license-file
+
+# Storm Forecasting with ConvLSTM Seq2Seq
+
+A clean, reproducible PyTorch refactor of an Imperial College MSc storm forecasting coursework project. The task is to use 12 past VIL (Vertically Integrated Liquid) radar frames to predict the next 12 frames at a 5-minute cadence.
+
+The original coursework objective was to optimise **MAE / L1 loss** because that was the competition metric. This refactor keeps that baseline intact, then creates a modular codebase that makes it straightforward to add more careful evaluation later, including:
+
+- weighted MAE for intensity-aware error analysis
+- SSIM for structural fidelity
+- simple Monte Carlo dropout uncertainty analysis
+
+## Why this repository exists
+
+The notebook version worked for the coursework and competition, but it mixed together:
+
+- EDA
+- data indexing
+- HDF5 I/O
+- dataset construction
+- model definition
+- training loops
+- evaluation and plotting
+
+This repository extracts those concerns into a proper Python package so the project can be used as a portfolio piece for ML research / ML engineering roles.
+
+## Modelling choices
+
+### Direct multi-step forecasting instead of autoregressive rollout
+This project predicts the next 12 frames in one forward pass rather than feeding predictions back into the model autoregressively. That design choice was deliberate:
+
+- storm evolution changes materially across the forecast horizon
+- repeated autoregressive rollout can compound error
+- a direct objective better matches the downstream evaluation setting for this coursework
+
+### MAE / L1 as the original optimisation target
+The original competition was scored with MAE, so the baseline model is trained with L1 loss. That is preserved here to keep the benchmark honest.
+
+### Future evaluation extensions
+Weighted MAE, SSIM, and Monte Carlo dropout are included as modular evaluation utilities so they can be investigated without rewriting the whole repo. They should be interpreted as **supplementary analysis**, not as retroactive changes to the original benchmark.
+
+## Repository layout
+
+```text
+storm-forecasting-convlstm/
+├─ configs/
+├─ data/
+├─ docs/
+├─ notebooks/
+├─ outputs/
+├─ reports/
+├─ scripts/
+├─ src/storm_forecasting/
+└─ tests/
+```
+
+## Installation
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pre-commit install
+```
+
+## Data access
+
+The dataset is hosted on Hugging Face and may require authentication.
+
+Recommended options:
+
+1. `huggingface-cli login`
+2. Or set an environment variable:
+
+```bash
+export HF_TOKEN=your_token_here
+```
+
+Then download the raw files and build the VIL-only index:
+
+```bash
+python -m storm_forecasting.cli.make_dataset_index   --download   --repo-id benmoseley/ese-dl-2025-26-group-project   --local-dir data   --events-csv data/events.csv   --output-csv data/vil_events.csv
+```
+
+The raw dataset files and any token-containing local files should **not** be committed.
+
+## Train baseline
+
+```bash
+python -m storm_forecasting.cli.train   --config configs/experiments/baseline_reproduction.yaml
+```
+
+## Evaluate baseline
+
+```bash
+python -m storm_forecasting.cli.evaluate   --config configs/experiments/baseline_reproduction.yaml
+```
+
+## Predict qualitative examples
+
+```bash
+python -m storm_forecasting.cli.predict   --config configs/experiments/baseline_reproduction.yaml   --checkpoint outputs/checkpoints/baseline_reproduction/best.pt   --index 0
+```
+
+## What is implemented now
+
+- HDF5 loading for per-storm VIL arrays
+- sliding-window sequence generation
+- storm-wise train / val / test split
+- lazy PyTorch dataset
+- ConvLSTM bottleneck U-Net seq2seq model
+- MAE baseline training
+- overall MAE / MSE / RMSE evaluation
+- per-horizon error curves
+- qualitative panels and GIF generation
+- optional weighted MAE / SSIM / MC dropout utilities
+
+## What this project does **not** claim
+
+This repository should not be framed as:
+
+- an operational forecasting platform
+- a production geospatial MLOps system
+- a calibrated probabilistic weather service
+- a full remote sensing stack
+
+It is a clean research-engineering refactor of a spatiotemporal forecasting project using VIL imagery in PyTorch.
+
+## Next repo improvements
+
+- GitHub Actions CI
+- pre-commit enforcement in CI
+- richer README figures and results tables
+- better experiment tracking
+- formal weighted-MAE / SSIM comparison runs
+- careful uncertainty analysis with limitations clearly stated

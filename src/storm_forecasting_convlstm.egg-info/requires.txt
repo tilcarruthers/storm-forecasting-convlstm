@@ -1,0 +1,17 @@
+numpy>=1.26
+pandas>=2.2
+matplotlib>=3.8
+h5py>=3.10
+PyYAML>=6.0
+huggingface_hub>=0.23
+imageio>=2.34
+scikit-image>=0.23
+torch>=2.2
+tqdm>=4.66
+
+[dev]
+pytest>=8.0
+pre-commit>=3.7
+ruff>=0.5
+ipykernel>=6.29
+jupyter>=1.0
