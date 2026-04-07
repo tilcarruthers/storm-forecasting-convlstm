@@ -1,31 +1,5 @@
 seed: 42
 
-data:
-  h5_path: data/train.h5
-  events_csv: data/events.csv
-  index_csv: data/vil_events.csv
-  repo_id: benmoseley/ese-dl-2025-26-group-project
-  event_col: id
-  event_type_col: event_type
-  img_type_col: img_type
-  dataset_key: vil
-  tin: 12
-  tout: 12
-  stride: 1
-  use_sliding_windows: true
-  normalize_divisor: 255.0
-  use_crops: false
-  crop_size: 384
-  expected_hw: [384, 384]
-  test_frac: 0.30
-  val_frac_of_train: 0.20
-
-model:
-  name: convlstm_unet
-  base: 16
-  bottleneck_ch: 128
-  dropout_p: 0.0
-
 training:
   batch_size: 1
   num_workers: 0

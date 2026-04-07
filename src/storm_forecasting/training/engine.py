@@ -150,7 +150,9 @@ def fit(
     output_dir: str | Path,
     config: dict[str, Any],
     scaler: torch.amp.GradScaler | None = None,
-    scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau | torch.optim.lr_scheduler._LRScheduler | None = None,
+    scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau
+    | torch.optim.lr_scheduler._LRScheduler
+    | None = None,
     amp_enabled: bool = False,
     grad_accum: int = 1,
     clip_grad_norm: float | None = None,

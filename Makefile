@@ -1,7 +1,11 @@
-.PHONY: install lint format test train evaluate predict
+PYTHON := .venv/bin/python
+REPO_ID := benmoseley/ese-dl-2025-26-group-project
+CONFIG := configs/experiments/baseline_reproduction.yaml
+
+.PHONY: install lint format test download-data build-index train evaluate predict
 
 install:
-	pip install -r requirements.txt
+	pip install -e ".[dev]"
 	pre-commit install
 
 lint:
@@ -15,11 +19,20 @@ format:
 test:
 	pytest
 
+download-data:
+	$(PYTHON) -m storm_forecasting.cli.make_dataset_index \
+		--config $(CONFIG) \
+		--download
+
+build-index:
+	$(PYTHON) -m storm_forecasting.cli.make_dataset_index \
+		--config $(CONFIG)
+
 train:
-	python -m storm_forecasting.cli.train --config configs/experiments/baseline_reproduction.yaml
+	$(PYTHON) -m storm_forecasting.cli.train --config $(CONFIG) --save-config-artifacts
 
 evaluate:
-	python -m storm_forecasting.cli.evaluate --config configs/experiments/baseline_reproduction.yaml
+	$(PYTHON) -m storm_forecasting.cli.evaluate --config $(CONFIG) --save-config-artifacts
 
 predict:
-	python -m storm_forecasting.cli.predict --config configs/experiments/baseline_reproduction.yaml --checkpoint outputs/checkpoints/baseline_reproduction/best.pt --index 0
+	$(PYTHON) -m storm_forecasting.cli.predict --config $(CONFIG) --checkpoint outputs/checkpoints/baseline_reproduction/best.pt --index 0

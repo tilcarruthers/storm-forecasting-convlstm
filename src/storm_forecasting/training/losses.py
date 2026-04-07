@@ -22,8 +22,10 @@ class WeightedMAELoss(nn.Module):
         abs_err = (pred - target).abs()
         weight_map = torch.full_like(target, self.weights[0])
 
-        for threshold, weight in zip(self.thresholds, self.weights[1:]):
-            weight_map = torch.where(target >= threshold, torch.full_like(weight_map, weight), weight_map)
+        for threshold, weight in zip(self.thresholds, self.weights[1:], strict=False):
+            weight_map = torch.where(
+                target >= threshold, torch.full_like(weight_map, weight), weight_map
+            )
 
         return (abs_err * weight_map).sum() / weight_map.sum().clamp_min(1e-12)
 

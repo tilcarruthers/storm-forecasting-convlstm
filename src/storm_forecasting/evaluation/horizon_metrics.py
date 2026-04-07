@@ -5,6 +5,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 
 @torch.no_grad()
@@ -14,16 +15,28 @@ def mae_per_horizon(
     device: torch.device,
     amp_enabled: bool,
     tout: int,
+    max_batches: int | None = None,
+    progress_desc: str = "MAE per horizon",
 ) -> np.ndarray:
     model.eval()
     sums = np.zeros(tout, dtype=np.float64)
     count = 0
 
-    for x, y, _ in loader:
+    total = len(loader)
+    if max_batches is not None:
+        total = min(total, max_batches)
+
+    for batch_idx, (x, y, _) in enumerate(
+        tqdm(loader, total=total, desc=progress_desc, leave=False)
+    ):
+        if max_batches is not None and batch_idx >= max_batches:
+            break
         x = x.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
 
-        with torch.amp.autocast(device_type=device.type, enabled=amp_enabled and device.type == "cuda"):
+        with torch.amp.autocast(
+            device_type=device.type, enabled=amp_enabled and device.type == "cuda"
+        ):
             y_hat = model(x)
 
         abs_err = (y_hat - y).abs().mean(dim=(0, 2, 3, 4))

@@ -6,7 +6,7 @@ import torch
 def enable_dropout(model: torch.nn.Module) -> None:
     """Enable dropout layers during evaluation for MC dropout."""
     for module in model.modules():
-        if isinstance(module, (torch.nn.Dropout, torch.nn.Dropout2d, torch.nn.Dropout3d)):
+        if isinstance(module, torch.nn.Dropout | torch.nn.Dropout2d | torch.nn.Dropout3d):
             module.train()
 
 
@@ -23,7 +23,9 @@ def mc_dropout_predict(
 
     preds = []
     for _ in range(n_samples):
-        with torch.amp.autocast(device_type=device.type, enabled=amp_enabled and device.type == "cuda"):
+        with torch.amp.autocast(
+            device_type=device.type, enabled=amp_enabled and device.type == "cuda"
+        ):
             pred = model(x.to(device))
         preds.append(pred.unsqueeze(0))
 

@@ -27,8 +27,10 @@ def weighted_mae(
         raise ValueError("weights must be one longer than thresholds")
 
     weight_map = torch.full_like(target, weights[0])
-    for threshold, weight in zip(thresholds, weights[1:]):
-        weight_map = torch.where(target >= threshold, torch.full_like(weight_map, weight), weight_map)
+    for threshold, weight in zip(thresholds, weights[1:], strict=False):
+        weight_map = torch.where(
+            target >= threshold, torch.full_like(weight_map, weight), weight_map
+        )
 
     abs_err = (pred - target).abs()
     return float((abs_err * weight_map).sum().item() / weight_map.sum().clamp_min(1e-12).item())

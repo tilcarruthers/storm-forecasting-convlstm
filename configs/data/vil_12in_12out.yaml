@@ -1,4 +1,12 @@
 data:
+  data_dir: data
+  repo_id: benmoseley/ese-dl-2025-26-group-project
+  h5_path: data/train.h5
+  events_csv: data/events.csv
+  index_csv: data/vil_events.csv
+  event_col: id
+  event_type_col: event_type
+  img_type_col: img_type
   dataset_key: vil
   tin: 12
   tout: 12
@@ -8,3 +16,5 @@ data:
   use_crops: false
   crop_size: 384
   expected_hw: [384, 384]
+  test_frac: 0.30
+  val_frac_of_train: 0.20

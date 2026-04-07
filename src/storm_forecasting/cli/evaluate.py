@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 
 import torch
-
-from storm_forecasting.config import load_config
+from storm_forecasting.config import load_config, save_flat_config_csv, save_resolved_config
 from storm_forecasting.data.dataset import VILSeq2SeqDataset, build_dataloader
 from storm_forecasting.data.io import load_index_csv
 from storm_forecasting.data.splits import split_ids
@@ -17,6 +17,7 @@ from storm_forecasting.paths import ensure_dir
 from storm_forecasting.training.checkpoints import load_checkpoint, load_model_state
 from storm_forecasting.utils.device import get_device
 from storm_forecasting.utils.logging import setup_logging
+from tqdm.auto import tqdm
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,7 +29,39 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional checkpoint path. Defaults to outputs/checkpoints/<run_name>/best.pt",
     )
+    parser.add_argument(
+        "--device", type=str, default=None, help="Optional device override, e.g. cpu or cuda"
+    )
+    parser.add_argument(
+        "--num-workers", type=int, default=None, help="Optional dataloader worker override"
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=None, help="Optional dataloader batch size override"
+    )
+    parser.add_argument(
+        "--max-batches", type=int, default=None, help="Evaluate only the first N batches"
+    )
+    parser.add_argument(
+        "--save-config-artifacts",
+        action="store_true",
+        help="Save resolved YAML and a flattened CSV of the run config alongside metrics.",
+    )
     return parser.parse_args()
+
+
+def _resolve_device(device_arg: str | None) -> torch.device:
+    return torch.device(device_arg) if device_arg else get_device()
+
+
+def _write_eval_summary_csv(metrics: dict[str, float], save_path: str | Path) -> Path:
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    with save_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["metric", "value"])
+        for key, value in sorted(metrics.items()):
+            writer.writerow([key, value])
+    return save_path
 
 
 @torch.no_grad()
@@ -39,20 +72,29 @@ def evaluate_streaming(
     amp_enabled: bool,
     compute_ssim: bool,
     weighted_mae_cfg: dict | None,
+    max_batches: int | None = None,
 ) -> dict[str, float]:
     totals: dict[str, float] = {}
     weight_sum = 0.0
     model.eval()
 
-    for x, y, _ in loader:
+    total = len(loader)
+    if max_batches is not None:
+        total = min(total, max_batches)
+
+    for batch_idx, (x, y, _) in enumerate(tqdm(loader, total=total, desc="Evaluate", leave=False)):
+        if max_batches is not None and batch_idx >= max_batches:
+            break
         x = x.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
-        with torch.amp.autocast(device_type=device.type, enabled=amp_enabled and device.type == "cuda"):
+        with torch.amp.autocast(
+            device_type=device.type, enabled=amp_enabled and device.type == "cuda"
+        ):
             y_hat = model(x)
 
         batch_metrics = compute_metrics(
-            y_hat.cpu(),
-            y.cpu(),
+            y_hat.detach().cpu(),
+            y.detach().cpu(),
             compute_ssim=compute_ssim,
             weighted_mae_cfg=weighted_mae_cfg,
         )
@@ -75,7 +117,9 @@ def main() -> None:
     model_cfg = config["model"]
     outputs_cfg = config["outputs"]
 
-    device = get_device()
+    device = _resolve_device(args.device)
+    batch_size = int(args.batch_size or train_cfg["batch_size"])
+    num_workers = int(train_cfg["num_workers"] if args.num_workers is None else args.num_workers)
 
     checkpoint_path = args.checkpoint or str(
         Path(outputs_cfg["checkpoints_dir"]) / outputs_cfg["run_name"] / "best.pt"
@@ -107,10 +151,18 @@ def main() -> None:
     )
     test_loader = build_dataloader(
         test_ds,
-        batch_size=int(train_cfg["batch_size"]),
+        batch_size=batch_size,
         shuffle=False,
-        num_workers=int(train_cfg["num_workers"]),
+        num_workers=num_workers,
     )
+
+    print(f"Device: {device}")
+    print(f"Checkpoint: {checkpoint_path}")
+    print(f"Num test events: {len(test_ids)}")
+    print(f"Num test samples: {len(test_ds)}")
+    print(f"Batch size: {batch_size}")
+    print(f"Num workers: {num_workers}")
+    print(f"Max batches: {args.max_batches}")
 
     model = ConvLSTMUNetSeq2Seq(
         base=int(model_cfg["base"]),
@@ -129,7 +181,10 @@ def main() -> None:
         device=device,
         amp_enabled=bool(train_cfg["amp"]),
         compute_ssim=bool(eval_cfg.get("compute_ssim", False)),
-        weighted_mae_cfg=eval_cfg.get("weighted_mae") if bool(eval_cfg.get("compute_weighted_mae", False)) else None,
+        weighted_mae_cfg=eval_cfg.get("weighted_mae")
+        if bool(eval_cfg.get("compute_weighted_mae", False))
+        else None,
+        max_batches=args.max_batches,
     )
 
     horizons = mae_per_horizon(
@@ -138,20 +193,38 @@ def main() -> None:
         device=device,
         amp_enabled=bool(train_cfg["amp"]),
         tout=int(data_cfg["tout"]),
+        max_batches=args.max_batches,
     )
 
     metrics_dir = ensure_dir(outputs_cfg["metrics_dir"])
     figures_dir = ensure_dir(outputs_cfg["figures_dir"])
-    metrics_path = metrics_dir / f"{outputs_cfg['run_name']}_eval.json"
-    metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    metrics_json_path = metrics_dir / f"{outputs_cfg['run_name']}_eval.json"
+    metrics_csv_path = metrics_dir / f"{outputs_cfg['run_name']}_eval.csv"
+    horizon_csv_path = metrics_dir / f"{outputs_cfg['run_name']}_mae_per_horizon.csv"
+    metrics_json_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    _write_eval_summary_csv(metrics, metrics_csv_path)
+
+    with horizon_csv_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["forecast_step", "mae"])
+        for idx, value in enumerate(horizons, start=1):
+            writer.writerow([idx, float(value)])
 
     plot_horizon_metric(
         horizons,
         save_path=figures_dir / f"{outputs_cfg['run_name']}_mae_per_horizon.png",
     )
 
+    if args.save_config_artifacts:
+        save_resolved_config(
+            config, metrics_dir / f"{outputs_cfg['run_name']}_resolved_config.yaml"
+        )
+        save_flat_config_csv(config, metrics_dir / f"{outputs_cfg['run_name']}_resolved_config.csv")
+
     print("Evaluation metrics:", metrics)
-    print(f"Saved metrics to {metrics_path}")
+    print(f"Saved metrics JSON to {metrics_json_path}")
+    print(f"Saved metrics CSV to {metrics_csv_path}")
+    print(f"Saved horizon CSV to {horizon_csv_path}")
 
 
 if __name__ == "__main__":
